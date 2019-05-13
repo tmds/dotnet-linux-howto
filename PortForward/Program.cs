@@ -1,0 +1,22 @@
+﻿using System;
+using System.Threading.Tasks;
+using Npgsql;
+
+namespace console
+{
+    class Program
+    {
+        static async Task Main(string[] args)
+        {
+            using (var portForward = await PortForward.ForwardAsync("tmds", "192.168.1.51", "/var/run/postgresql/.s.PGSQL.5432"))
+            {
+                var connectionString = $"Server={portForward.IPEndPoint.Address};Port={portForward.IPEndPoint.Port};Database=postgres";
+                using (var connection = new NpgsqlConnection (connectionString))
+                {
+                    connection.Open();
+                    Console.WriteLine($"PostgreSQL version: {connection.PostgreSqlVersion}");
+                }
+            }
+        }
+    }
+}
