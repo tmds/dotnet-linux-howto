@@ -27,6 +27,7 @@ namespace SshUtils
         public string RemoteEndPoint { get; set; }
         public int TimeoutSeconds { get; set; } = 10;
         public bool AllowPasswordPrompt { get; set; }
+        public string IdentityFile { get; set; }
     }
 
     class PortForward : IDisposable
@@ -54,7 +55,7 @@ namespace SshUtils
 
         public IPEndPoint IPEndPoint => _ipEndPoint;
 
-        public static Task<PortForward> ForwardAsync(string remote /* [<user>@]<host>:<remoteendpoint> */)
+        public static Task<PortForward> ForwardAsync(string remote /* [<user>@]<host>:<remoteendpoint> */, Action<PortForwardOptions> configure = null)
         {
             string host;
             string user = null;
@@ -71,12 +72,14 @@ namespace SshUtils
             }
             host = remote.Substring(indexOfAt + 1, indexOfColon - indexOfAt - 1);
             remoteEndPoint = remote.Substring(indexOfColon + 1);
-            return ForwardAsync(new PortForwardOptions
+            var portForwardOptions = new PortForwardOptions
             {
                 RemoteEndPoint = remoteEndPoint,
                 User = user,
                 Host = host
-            });
+            };
+            configure?.Invoke(portForwardOptions);
+            return ForwardAsync(portForwardOptions);
         }
 
         public static async Task<PortForward> ForwardAsync(PortForwardOptions options)
@@ -116,6 +119,12 @@ namespace SshUtils
                 {
                     psi.ArgumentList.Add("-l");
                     psi.ArgumentList.Add(options.User);
+                }
+
+                if (!string.IsNullOrEmpty(options.IdentityFile))
+                {
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add(options.IdentityFile);
                 }
 
                 psi.ArgumentList.Add("-L");
