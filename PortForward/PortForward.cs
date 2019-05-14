@@ -7,7 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
-namespace console
+namespace SshUtils
 {
     [System.Serializable]
     public class PortForwardException : System.Exception
@@ -18,6 +18,15 @@ namespace console
          }
 
         public int StatusCode { get; }
+    }
+
+    public class PortForwardOptions
+    {
+        public string User { get; set; }
+        public string Host { get; set; }
+        public string RemoteEndPoint { get; set; }
+        public int TimeoutSeconds { get; set; } = 10;
+        public bool AllowPasswordPrompt { get; set; }
     }
 
     class PortForward : IDisposable
@@ -45,8 +54,42 @@ namespace console
 
         public IPEndPoint IPEndPoint => _ipEndPoint;
 
-        public static async Task<PortForward> ForwardAsync(string remoteUser, string remoteHost, string remoteSocket, int timeoutSeconds = 10, bool allowPasswordPrompt = false)
+        public static Task<PortForward> ForwardAsync(string remote /* [<user>@]<host>:<remoteendpoint> */)
         {
+            string host;
+            string user = null;
+            string remoteEndPoint;
+            int indexOfAt = remote.IndexOf('@');
+            int indexOfColon = remote.IndexOf(':');
+            if (indexOfColon == -1)
+            {
+                throw new ArgumentException($"Missing remote end point", nameof(remote));
+            }
+            if (indexOfAt != -1)
+            {
+                user = remote.Substring(0, indexOfAt);
+            }
+            host = remote.Substring(indexOfAt + 1, indexOfColon - indexOfAt - 1);
+            remoteEndPoint = remote.Substring(indexOfColon + 1);
+            return ForwardAsync(new PortForwardOptions
+            {
+                RemoteEndPoint = remoteEndPoint,
+                User = user,
+                Host = host
+            });
+        }
+
+        public static async Task<PortForward> ForwardAsync(PortForwardOptions options)
+        {
+            if (string.IsNullOrEmpty(options.RemoteEndPoint))
+            {
+                throw new ArgumentException($"{options.RemoteEndPoint} cannot be empty", nameof(options));
+            }
+            if (string.IsNullOrEmpty(options.Host))
+            {
+                throw new ArgumentException($"{options.Host} cannot be empty", nameof(options));
+            }
+
             // Socket used to find a free port on the local machine.
             Socket portSocket = null;
             try
@@ -55,21 +98,36 @@ namespace console
                 portSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, 1);
                 portSocket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
                 int port = (portSocket.LocalEndPoint as IPEndPoint).Port;
-
+                
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = "ssh",
-                    ArgumentList = { "-l", remoteUser, "-L", $"127.0.0.1:{port}:{remoteSocket}", remoteHost, "sleep", timeoutSeconds.ToString() },
+                    RedirectStandardInput = true,
                     RedirectStandardError = true,
                     RedirectStandardOutput = true
                 };
 
-                if (!allowPasswordPrompt)
+                if (!options.AllowPasswordPrompt)
                 {
                     psi.ArgumentList.Add("-oBatchMode=yes");
                 }
 
+                if (!string.IsNullOrEmpty(options.User))
+                {
+                    psi.ArgumentList.Add("-l");
+                    psi.ArgumentList.Add(options.User);
+                }
+
+                psi.ArgumentList.Add("-L");
+                psi.ArgumentList.Add($"127.0.0.1:{port}:{options.RemoteEndPoint}");
+
+                psi.ArgumentList.Add(options.Host);
+
+                psi.ArgumentList.Add("sleep");
+                psi.ArgumentList.Add(options.TimeoutSeconds.ToString());
+
                 Process portForwardProcess = Process.Start(psi);
+
                 try
                 {
                     // wait until the port is forwarded
