@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 namespace SshUtils
 {
-    [System.Serializable]
     public class PortForwardException : System.Exception
     {
         public PortForwardException() { }
